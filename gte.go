@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -46,6 +48,7 @@ func readFile(filename string) {
 
 func displayTextBuffer(s tcell.Screen) {
 	COLS, ROWS = s.Size()
+	ROWS -= 2 // last two lines are for the status bar
 	var row, col int
 	for row = 0; row < ROWS; row++ {
 		rowPos := row + offsetY
@@ -67,6 +70,37 @@ func displayTextBuffer(s tcell.Screen) {
 			}
 		}
 	}
+}
+
+const (
+	normalMode = iota
+	insertMode
+)
+var mode int
+
+func displayStatusBar(s tcell.Screen) {
+	var modeStatus string
+	var displayFilename string
+	//var fileStatus string
+	var cursorStatus string
+
+	switch mode {
+	case normalMode:
+		modeStatus = " [ NORMAL ] "
+	case insertMode:
+		modeStatus = " [ INSERT ] "
+	}
+
+	displayFilename = source_file[:8]
+	cursorStatus = "x:y "
+	statusInfoLen := len(modeStatus + displayFilename + cursorStatus)
+	spacesLen := COLS - statusInfoLen
+	spaces := strings.Repeat(" ", spacesLen)
+
+	statusBarText := modeStatus + displayFilename + spaces + cursorStatus
+	statusBarStyle := tcell.StyleDefault.Background(tcell.ColorLightBlue).Foreground(tcell.ColorBlack)
+
+	drawText(s, ROWS, 0, statusBarStyle, statusBarText)
 }
 
 func drawText(s tcell.Screen, x, y int, style tcell.Style, text string) {
@@ -103,6 +137,10 @@ func runEditor() {
 	source_file = os.Args[1]
 	readFile(source_file)
 	displayTextBuffer(s)
+	displayStatusBar(s)
+
+	drawText(s, 18, 0, defStyle, strconv.Itoa(ROWS))
+	drawText(s, 1, 0, defStyle, strconv.Itoa(COLS))
 
 	s.Show()
 
@@ -113,6 +151,7 @@ func runEditor() {
 		case *tcell.EventResize:
 			s.Sync()
 			displayTextBuffer(s)
+			displayStatusBar(s)
 		case *tcell.EventKey:
 			if ev.Rune() == 'q' || ev.Rune() == 'Q' || ev.Key() == tcell.KeyEscape ||
 			ev.Key() == tcell.KeyCtrlC {
