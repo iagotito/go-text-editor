@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/gdamore/tcell/v2"
 )
@@ -9,9 +12,36 @@ import (
 var ROWS, COLS int
 var offsetX, offsetY int
 
-var textBuffer = [][]rune{
-	[]rune("Hello more text to text hahaha"),
-	[]rune("World"),
+var source_file string
+var textBuffer = [][]rune{}
+
+func readFile(filename string) {
+	source_file = filename
+
+	file, err := os.Open(filename)
+	if err != nil {
+		textBuffer = append(textBuffer, []rune{})
+		return
+	}
+
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		lineBuffer := make([]rune, len(line))
+
+		for pos, char := range line {
+			lineBuffer[pos] = char
+		}
+
+		textBuffer = append(textBuffer, lineBuffer)
+	}
+
+	if len(textBuffer) == 0 {
+		textBuffer = append(textBuffer, []rune{})
+	}
 }
 
 func displayTextBuffer(s tcell.Screen) {
@@ -70,9 +100,8 @@ func runEditor() {
 	defStyle := tcell.StyleDefault.Background(tcell.ColorDefault).Foreground(tcell.ColorDefault)
 	s.SetStyle(defStyle)
 
-	//drawText(s, 6, 20, defStyle, "Go Text Editor")
-	//drawText(s, 10, 20, defStyle, "Press 'q' to exit")
-
+	source_file = os.Args[1]
+	readFile(source_file)
 	displayTextBuffer(s)
 
 	s.Show()
@@ -94,5 +123,9 @@ func runEditor() {
 }
 
 func main() {
+	if len(os.Args) == 1 {
+		fmt.Println("No source file provided.")
+		return
+	}
 	runEditor()
 }
