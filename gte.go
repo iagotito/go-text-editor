@@ -5,17 +5,38 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
 )
 
+var logger *log.Logger
+
 var ROWS, COLS int
-var offsetX, offsetY int
+var offsetRow, offsetCol int
 
 var source_file string
 var textBuffer = [][]rune{}
+
+const (
+	normalMode = iota
+	insertMode
+)
+var mode int = 0
+
+type cursorPos struct {
+	Row, Col int
+}
+var cursor = &cursorPos{0, 0}
+
+func drawText(s tcell.Screen, x, y int, style tcell.Style, text string) {
+	row := x
+	col := y
+	for _, r := range []rune(text) {
+		s.SetContent(col, row, r, nil, style)
+		col++
+	}
+}
 
 func readFile(filename string) {
 	source_file = filename
@@ -46,37 +67,36 @@ func readFile(filename string) {
 	}
 }
 
+func scrollTextBuffer() {
+  if cursor.Row < offsetRow { offsetRow = cursor.Row }
+  if cursor.Col < offsetCol { offsetCol = cursor.Col }
+  if cursor.Row >= offsetRow + ROWS { offsetRow = cursor.Row - ROWS+1 }
+  if cursor.Col >= offsetCol + COLS { offsetCol = cursor.Col - COLS+1 }
+}
+
 func displayTextBuffer(s tcell.Screen) {
-	COLS, ROWS = s.Size()
-	ROWS -= 2 // last two lines are for the status bar
 	var row, col int
 	for row = 0; row < ROWS; row++ {
-		rowPos := row + offsetY
+		rowPos := row + offsetRow
 		for col = 0; col < COLS; col++ {
-			colPos := col + offsetX
+			colPos := col + offsetCol
 
 			if rowPos >= 0 && rowPos < len(textBuffer) && colPos < len(textBuffer[rowPos]) {
 				if textBuffer[rowPos][colPos] != '\t' {
-					s.SetContent(colPos, rowPos, textBuffer[rowPos][colPos], nil, tcell.StyleDefault)
+					s.SetContent(col, row, textBuffer[rowPos][colPos], nil, tcell.StyleDefault)
 				} else {
-					s.SetContent(colPos, rowPos, ' ', nil, tcell.StyleDefault.Background(tcell.ColorLightGreen))
+					s.SetContent(col, row, ' ', nil, tcell.StyleDefault.Background(tcell.ColorLightGreen))
 				}
-			} else if rowPos >= len(textBuffer) {
-					s.SetContent(0, rowPos, '~', nil, tcell.StyleDefault.Foreground(tcell.ColorBlue))
+			} else if row + offsetRow >= len(textBuffer) {
+					s.SetContent(0, row, '~', nil, tcell.StyleDefault.Foreground(tcell.ColorBlue))
 			}
 
 			if rowPos < len(textBuffer) && colPos == len(textBuffer[rowPos]) {
-				s.SetContent(colPos, rowPos, '\n', nil, tcell.StyleDefault)
+				s.SetContent(col, row, '\n', nil, tcell.StyleDefault)
 			}
 		}
 	}
 }
-
-const (
-	normalMode = iota
-	insertMode
-)
-var mode int
 
 func displayStatusBar(s tcell.Screen) {
 	var modeStatus string
@@ -92,7 +112,7 @@ func displayStatusBar(s tcell.Screen) {
 	}
 
 	displayFilename = source_file[:8]
-	cursorStatus = "x:y "
+	cursorStatus = fmt.Sprintf("%d:%d", cursor.Row, cursor.Col)
 	statusInfoLen := len(modeStatus + displayFilename + cursorStatus)
 	spacesLen := COLS - statusInfoLen
 	spaces := strings.Repeat(" ", spacesLen)
@@ -103,13 +123,63 @@ func displayStatusBar(s tcell.Screen) {
 	drawText(s, ROWS, 0, statusBarStyle, statusBarText)
 }
 
-func drawText(s tcell.Screen, x, y int, style tcell.Style, text string) {
-	row := x
-	col := y
-	for _, r := range []rune(text) {
-		s.SetContent(col, row, r, nil, style)
-		col++
+func displayCursor(s tcell.Screen) {
+	cursorStyle := tcell.CursorStyle(0)
+	s.SetCursorStyle(cursorStyle)
+	if len(textBuffer[cursor.Row]) > cursor.Col {
+		s.ShowCursor(cursor.Col-offsetCol, cursor.Row-offsetRow)
+	} else {
+		if len(textBuffer[cursor.Row]) > 0 {
+			s.ShowCursor(len(textBuffer[cursor.Row])-1, cursor.Row-offsetRow)
+		} else {
+			s.ShowCursor(0, cursor.Row-offsetRow)
+		}
 	}
+}
+
+func moveCursor(direction string) {
+	if direction == "left" {
+		if cursor.Col > 0 { cursor.Col-- }
+	} else if direction == "down" {
+		if cursor.Row < len(textBuffer)-1 { cursor.Row++ }
+	} else if direction == "up" {
+		if cursor.Row > 0 { cursor.Row-- }
+	} else if direction == "right" {
+		if cursor.Col < len(textBuffer[cursor.Row])-1 { cursor.Col++ }
+	}
+}
+
+func loadScreen(s tcell.Screen) {
+	COLS, ROWS = s.Size()
+	ROWS -= 2 // last two lines are for the status bar
+	s.Clear()
+	// Set default style
+	defStyle := tcell.StyleDefault.Background(tcell.ColorDefault).Foreground(tcell.ColorDefault)
+	s.SetStyle(defStyle)
+
+	scrollTextBuffer()
+	displayTextBuffer(s)
+	displayCursor(s)
+	displayStatusBar(s)
+
+	s.Show()
+}
+
+// handleEvent realizes actions based on the pressed key and the mode the
+// editor is in. It returns true when receives a command to stop the editor.
+func handleEvent(s tcell.Screen, ev *tcell.EventKey) bool {
+	if ev.Rune() == 'q' || ev.Rune() == 'Q' || ev.Key() == tcell.KeyEscape ||
+	ev.Key() == tcell.KeyCtrlC {
+		return true
+	} else if ev.Key() == tcell.KeyLeft || mode == normalMode && ev.Rune() == 'h' { moveCursor("left")
+	} else if ev.Key() == tcell.KeyDown || mode == normalMode && ev.Rune() == 'j' { moveCursor("down")
+	} else if ev.Key() == tcell.KeyUp || mode == normalMode && ev.Rune() == 'k' { moveCursor("up")
+	} else if ev.Key() == tcell.KeyRight || mode == normalMode && ev.Rune() == 'l' { moveCursor("right")
+	}
+
+	loadScreen(s)
+
+	return false
 }
 
 func runEditor() {
@@ -130,41 +200,40 @@ func runEditor() {
 	}
 	defer quit()
 
-	// Set default style
-	defStyle := tcell.StyleDefault.Background(tcell.ColorDefault).Foreground(tcell.ColorDefault)
-	s.SetStyle(defStyle)
+	loadScreen(s)
 
-	source_file = os.Args[1]
-	readFile(source_file)
-	displayTextBuffer(s)
-	displayStatusBar(s)
-
-	drawText(s, 18, 0, defStyle, strconv.Itoa(ROWS))
-	drawText(s, 1, 0, defStyle, strconv.Itoa(COLS))
-
-	s.Show()
-
-	for {
+	stop := false
+	for !stop {
 		ev := s.PollEvent()
 
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
 			s.Sync()
-			displayTextBuffer(s)
-			displayStatusBar(s)
+			loadScreen(s)
 		case *tcell.EventKey:
-			if ev.Rune() == 'q' || ev.Rune() == 'Q' || ev.Key() == tcell.KeyEscape ||
-			ev.Key() == tcell.KeyCtrlC {
-				return
-			}
+			stop = handleEvent(s, ev)
 		}
 	}
 }
 
 func main() {
+	initLogs()
 	if len(os.Args) == 1 {
+		log.Println("No source file provided.")
 		fmt.Println("No source file provided.")
 		return
 	}
+	source_file = os.Args[1]
+
+	readFile(source_file)
 	runEditor()
+}
+
+func initLogs() {
+ logFile, err := os.OpenFile("logs.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.Fatal(err)
+    }
+	logger = log.New(logFile, "", log.Ldate|log.Ltime|log.Lshortfile)
+	log.SetOutput(logFile)
 }
