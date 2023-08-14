@@ -103,12 +103,15 @@ func displayStatusBar(s tcell.Screen) {
 	var displayFilename string
 	//var fileStatus string
 	var cursorStatus string
+	var statusBarColor tcell.Color
 
 	switch mode {
 	case normalMode:
 		modeStatus = " [ NORMAL ] "
+		statusBarColor = tcell.ColorLightBlue
 	case insertMode:
 		modeStatus = " [ INSERT ] "
+		statusBarColor = tcell.ColorOrange
 	}
 
 	displayFilename = source_file[:8]
@@ -118,7 +121,7 @@ func displayStatusBar(s tcell.Screen) {
 	spaces := strings.Repeat(" ", spacesLen)
 
 	statusBarText := modeStatus + displayFilename + spaces + cursorStatus
-	statusBarStyle := tcell.StyleDefault.Background(tcell.ColorLightBlue).Foreground(tcell.ColorBlack)
+	statusBarStyle := tcell.StyleDefault.Background(statusBarColor).Foreground(tcell.ColorBlack)
 
 	drawText(s, ROWS, 0, statusBarStyle, statusBarText)
 }
@@ -165,16 +168,41 @@ func loadScreen(s tcell.Screen) {
 	s.Show()
 }
 
+func insertRune(r rune) {
+	if len(textBuffer[cursor.Row]) > cursor.Col {
+		cursor.Col = len(textBuffer[cursor.Row])-1
+	}
+	insertRuneRow := make([]rune, len(textBuffer[cursor.Row])+1)
+	if len(textBuffer[cursor.Row]) > 0 {
+		copy(insertRuneRow[:cursor.Col], textBuffer[cursor.Row][:cursor.Col])
+		copy(insertRuneRow[cursor.Col+1:], textBuffer[cursor.Row][cursor.Col:])
+	}
+	insertRuneRow[cursor.Col] = r
+	textBuffer[cursor.Row] = insertRuneRow
+	cursor.Col++
+}
+
 // handleEvent realizes actions based on the pressed key and the mode the
 // editor is in. It returns true when receives a command to stop the editor.
 func handleEvent(s tcell.Screen, ev *tcell.EventKey) bool {
-	if ev.Rune() == 'q' || ev.Rune() == 'Q' || ev.Key() == tcell.KeyEscape ||
-	ev.Key() == tcell.KeyCtrlC {
-		return true
-	} else if ev.Key() == tcell.KeyLeft || mode == normalMode && ev.Rune() == 'h' { moveCursor("left")
-	} else if ev.Key() == tcell.KeyDown || mode == normalMode && ev.Rune() == 'j' { moveCursor("down")
-	} else if ev.Key() == tcell.KeyUp || mode == normalMode && ev.Rune() == 'k' { moveCursor("up")
-	} else if ev.Key() == tcell.KeyRight || mode == normalMode && ev.Rune() == 'l' { moveCursor("right")
+	if ev.Key() == tcell.KeyCtrlC { return true
+	} else if ev.Key() == tcell.KeyLeft { moveCursor("left")
+	} else if ev.Key() == tcell.KeyDown { moveCursor("down")
+	} else if ev.Key() == tcell.KeyUp { moveCursor("up")
+	} else if ev.Key() == tcell.KeyRight { moveCursor("right")
+	} else if mode == normalMode {
+		if ev.Rune() == 'q' || ev.Rune() == 'Q' || ev.Key() == tcell.KeyEscape {
+			return true
+		} else if ev.Rune() == 'h' { moveCursor("left")
+		} else if ev.Rune() == 'j' { moveCursor("down")
+		} else if ev.Rune() == 'k' { moveCursor("up")
+		} else if ev.Rune() == 'l' { moveCursor("right")
+		} else if ev.Rune() == 'i' { mode = insertMode
+		}
+	} else if mode == insertMode {
+		if ev.Key() == tcell.KeyEsc { mode = normalMode
+		} else { insertRune(ev.Rune())
+		}
 	}
 
 	loadScreen(s)
