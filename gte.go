@@ -133,7 +133,11 @@ func displayCursor(s tcell.Screen) {
 		s.ShowCursor(cursor.Col-offsetCol, cursor.Row-offsetRow)
 	} else {
 		if len(textBuffer[cursor.Row]) > 0 {
-			s.ShowCursor(len(textBuffer[cursor.Row])-1, cursor.Row-offsetRow)
+			if mode == normalMode {
+				s.ShowCursor(len(textBuffer[cursor.Row])-1, cursor.Row-offsetRow)
+			} else {
+				s.ShowCursor(len(textBuffer[cursor.Row]), cursor.Row-offsetRow)
+			}
 		} else {
 			s.ShowCursor(0, cursor.Row-offsetRow)
 		}
@@ -148,7 +152,10 @@ func moveCursor(direction string) {
 	} else if direction == "up" {
 		if cursor.Row > 0 { cursor.Row-- }
 	} else if direction == "right" {
-		if cursor.Col < len(textBuffer[cursor.Row])-1 { cursor.Col++ }
+		if cursor.Col < len(textBuffer[cursor.Row])-1 ||
+		mode == insertMode && cursor.Col < len(textBuffer[cursor.Row]) {
+			cursor.Col++
+		}
 	}
 }
 
@@ -169,17 +176,30 @@ func loadScreen(s tcell.Screen) {
 }
 
 func insertRune(r rune) {
-	if len(textBuffer[cursor.Row]) > cursor.Col {
-		cursor.Col = len(textBuffer[cursor.Row])-1
-	}
-	insertRuneRow := make([]rune, len(textBuffer[cursor.Row])+1)
-	if len(textBuffer[cursor.Row]) > 0 {
-		copy(insertRuneRow[:cursor.Col], textBuffer[cursor.Row][:cursor.Col])
+	rowLen := len(textBuffer[cursor.Row])
+	insertRuneRow := make([]rune, rowLen+1)
+
+	if cursor.Col > rowLen { cursor.Col = rowLen }
+
+	insertRuneRow[cursor.Col] = r
+	copy(insertRuneRow[:cursor.Col], textBuffer[cursor.Row][:cursor.Col])
+	if rowLen > 0 {
 		copy(insertRuneRow[cursor.Col+1:], textBuffer[cursor.Row][cursor.Col:])
 	}
-	insertRuneRow[cursor.Col] = r
+
 	textBuffer[cursor.Row] = insertRuneRow
 	cursor.Col++
+}
+
+func changeMode(m string) {
+	if m == "normal" {
+		mode = normalMode
+		if cursor.Col == len(textBuffer[cursor.Row]) {
+			cursor.Col--
+		}
+	} else {
+		mode = insertMode
+	}
 }
 
 // handleEvent realizes actions based on the pressed key and the mode the
@@ -197,10 +217,14 @@ func handleEvent(s tcell.Screen, ev *tcell.EventKey) bool {
 		} else if ev.Rune() == 'j' { moveCursor("down")
 		} else if ev.Rune() == 'k' { moveCursor("up")
 		} else if ev.Rune() == 'l' { moveCursor("right")
-		} else if ev.Rune() == 'i' { mode = insertMode
+		} else if ev.Rune() == 'i' {
+			changeMode("insert")
+			loadScreen(s)
 		}
 	} else if mode == insertMode {
-		if ev.Key() == tcell.KeyEsc { mode = normalMode
+		if ev.Key() == tcell.KeyEsc {
+			changeMode("normal")
+			loadScreen(s)
 		} else { insertRune(ev.Rune())
 		}
 	}
