@@ -212,6 +212,20 @@ func insertRune(r rune) {
 	cursor.Col++
 }
 
+func removeRune() {
+	rowLen := len(textBuffer[cursor.Row])
+	if rowLen == 0 || cursor.Col == 0 { return }
+	removeRuneRow := make([]rune, rowLen-1)
+
+	if cursor.Col > rowLen { cursor.Col = rowLen }
+
+	copy(removeRuneRow[:cursor.Col-1], textBuffer[cursor.Row][:cursor.Col-1])
+	copy(removeRuneRow[cursor.Col-1:], textBuffer[cursor.Row][cursor.Col:])
+
+	textBuffer[cursor.Row] = removeRuneRow
+	cursor.Col--
+}
+
 func changeMode(m string) {
 	if m == "normal" {
 		mode = normalMode
@@ -220,6 +234,10 @@ func changeMode(m string) {
 		}
 	} else {
 		mode = insertMode
+	}
+
+	if m == "append" {
+		cursor.Col++
 	}
 }
 
@@ -238,14 +256,12 @@ func handleEvent(s tcell.Screen, ev *tcell.EventKey) bool {
 		} else if ev.Rune() == 'j' { moveCursor("down")
 		} else if ev.Rune() == 'k' { moveCursor("up")
 		} else if ev.Rune() == 'l' { moveCursor("right")
-		} else if ev.Rune() == 'i' {
-			changeMode("insert")
-			loadScreen(s)
+		} else if ev.Rune() == 'i' { changeMode("insert")
+		} else if ev.Rune() == 'a' { changeMode("append")
 		}
 	} else if mode == insertMode {
-		if ev.Key() == tcell.KeyEsc {
-			changeMode("normal")
-			loadScreen(s)
+		if ev.Key() == tcell.KeyEsc { changeMode("normal")
+		} else if ev.Key() == tcell.KeyBackspace || ev.Key() == tcell.KeyBackspace2 { removeRune()
 		} else { insertRune(ev.Rune())
 		}
 	}
