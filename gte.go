@@ -169,9 +169,25 @@ func moveCursor(direction string) {
 	if direction == "left" {
 		if cursor.Col > 0 { cursor.Col-- }
 	} else if direction == "down" {
-		if cursor.Row < len(textBuffer)-1 { cursor.Row++ }
+		if cursor.Row < len(textBuffer)-1 {
+			cursor.Row++
+			if cursor.Col > len(textBuffer[cursor.Row])-1 {
+				if len(textBuffer[cursor.Row]) != 0 { cursor.Col = len(textBuffer[cursor.Row])-1
+				} else {
+					cursor.Col = 0
+				}
+			}
+		}
 	} else if direction == "up" {
-		if cursor.Row > 0 { cursor.Row-- }
+		if cursor.Row > 0 {
+			cursor.Row--
+			if cursor.Col > len(textBuffer[cursor.Row])-1 {
+				if len(textBuffer[cursor.Row]) != 0 { cursor.Col = len(textBuffer[cursor.Row])-1
+				} else {
+					cursor.Col = 0
+				}
+			}
+		}
 	} else if direction == "right" {
 		if cursor.Col < len(textBuffer[cursor.Row])-1 ||
 		mode == insertMode && cursor.Col < len(textBuffer[cursor.Row]) {
@@ -212,9 +228,32 @@ func insertRune(r rune) {
 	cursor.Col++
 }
 
+func removeLineBreak() {
+	if cursor.Row == 0 { return }
+
+	aboveRowLen := len(textBuffer[cursor.Row-1])
+	currentRowLen := len(textBuffer[cursor.Row])
+	newAboveRow := make([]rune, aboveRowLen + currentRowLen)
+	copy(newAboveRow[:aboveRowLen], textBuffer[cursor.Row-1])
+	copy(newAboveRow[aboveRowLen:], textBuffer[cursor.Row])
+
+	newTextBuffer := make([][]rune, len(textBuffer)-1)
+	copy(newTextBuffer[:cursor.Row-1], textBuffer[:cursor.Row-1])
+	copy(newTextBuffer[cursor.Row-1:], textBuffer[cursor.Row:])
+	newTextBuffer[cursor.Row-1] = newAboveRow
+
+	textBuffer = newTextBuffer
+
+	cursor.Row--
+	cursor.Col = aboveRowLen
+}
+
 func removeRune() {
 	rowLen := len(textBuffer[cursor.Row])
-	if rowLen == 0 || cursor.Col == 0 { return }
+	if cursor.Col == 0 {
+		removeLineBreak()
+		return
+	}
 	removeRuneRow := make([]rune, rowLen-1)
 
 	if cursor.Col > rowLen { cursor.Col = rowLen }
