@@ -29,6 +29,27 @@ type cursorPos struct {
 }
 var cursor = &cursorPos{0, 0}
 
+func init() {
+ logFile, err := os.OpenFile("logs.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.Fatal(err)
+    }
+	logger = log.New(logFile, "", log.Ldate|log.Ltime|log.Lshortfile)
+	log.SetOutput(logFile)
+}
+
+func main() {
+	if len(os.Args) == 1 {
+		log.Println("No source file provided.")
+		fmt.Println("No source file provided.")
+		return
+	}
+	source_file = os.Args[1]
+
+	readFile(source_file)
+	runEditor()
+}
+
 func drawText(s tcell.Screen, x, y int, style tcell.Style, text string) {
 	row := x
 	col := y
@@ -266,26 +287,4 @@ func runEditor() {
 			stop = handleEvent(s, ev)
 		}
 	}
-}
-
-func main() {
-	initLogs()
-	if len(os.Args) == 1 {
-		log.Println("No source file provided.")
-		fmt.Println("No source file provided.")
-		return
-	}
-	source_file = os.Args[1]
-
-	readFile(source_file)
-	runEditor()
-}
-
-func initLogs() {
- logFile, err := os.OpenFile("logs.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-    if err != nil {
-        log.Fatal(err)
-    }
-	logger = log.New(logFile, "", log.Ldate|log.Ltime|log.Lshortfile)
-	log.SetOutput(logFile)
 }
