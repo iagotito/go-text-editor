@@ -26,8 +26,15 @@ var mode int = 0
 
 type cursorPos struct {
 	Row, Col int
+
+	// ColBufer is used to store the position the cursor was in the the original
+	// line when moving vertically to restore the original column. For exemple,
+	// when moving from position 10 to a line that only have 5 characters, the
+	// cursor will be at position 5, but when move again, it should go back to
+	// position 10, unless there is a horizontal move.
+	ColBuffer int
 }
-var cursor = &cursorPos{0, 0}
+var cursor = &cursorPos{0, 0, -1}
 
 func init() {
  logFile, err := os.OpenFile("logs.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -48,6 +55,11 @@ func main() {
 
 	readFile(source_file)
 	runEditor()
+}
+
+func max(a, b int) int {
+	if a > b { return a }
+	return b
 }
 
 func drawText(s tcell.Screen, x, y int, style tcell.Style, text string) {
@@ -136,7 +148,7 @@ func displayStatusBar(s tcell.Screen) {
 	}
 
 	displayFilename = source_file[:8]
-	cursorStatus = fmt.Sprintf("%d:%d", cursor.Row, cursor.Col)
+	cursorStatus = fmt.Sprintf("%d:%d", cursor.Row+1, cursor.Col+1)
 	statusInfoLen := len(modeStatus + displayFilename + cursorStatus)
 	spacesLen := COLS - statusInfoLen
 	spaces := strings.Repeat(" ", spacesLen)
@@ -168,30 +180,36 @@ func displayCursor(s tcell.Screen) {
 func moveCursor(direction string) {
 	if direction == "left" {
 		if cursor.Col > 0 { cursor.Col-- }
+		cursor.ColBuffer = -1
+	} else if direction == "right" {
+		if cursor.Col < len(textBuffer[cursor.Row])-1 ||
+		mode == insertMode && cursor.Col < len(textBuffer[cursor.Row]) {
+			cursor.Col++
+		}
+		cursor.ColBuffer = -1
 	} else if direction == "down" {
 		if cursor.Row < len(textBuffer)-1 {
 			cursor.Row++
+			if cursor.ColBuffer < 0 {
+				cursor.ColBuffer = cursor.Col
+			}
 			if cursor.Col > len(textBuffer[cursor.Row])-1 {
-				if len(textBuffer[cursor.Row]) != 0 { cursor.Col = len(textBuffer[cursor.Row])-1
-				} else {
-					cursor.Col = 0
-				}
+				cursor.Col = max(len(textBuffer[cursor.Row])-1, 0)
+			} else {
+				cursor.Col = cursor.ColBuffer
 			}
 		}
 	} else if direction == "up" {
 		if cursor.Row > 0 {
 			cursor.Row--
-			if cursor.Col > len(textBuffer[cursor.Row])-1 {
-				if len(textBuffer[cursor.Row]) != 0 { cursor.Col = len(textBuffer[cursor.Row])-1
-				} else {
-					cursor.Col = 0
-				}
+			if cursor.ColBuffer < 0 {
+				cursor.ColBuffer = cursor.Col
 			}
-		}
-	} else if direction == "right" {
-		if cursor.Col < len(textBuffer[cursor.Row])-1 ||
-		mode == insertMode && cursor.Col < len(textBuffer[cursor.Row]) {
-			cursor.Col++
+			if cursor.Col > len(textBuffer[cursor.Row])-1 {
+				cursor.Col = max(len(textBuffer[cursor.Row])-1, 0)
+			} else {
+				cursor.Col = cursor.ColBuffer
+			}
 		}
 	}
 }
