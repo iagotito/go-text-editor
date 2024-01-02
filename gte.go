@@ -246,6 +246,27 @@ func insertRune(r rune) {
 	cursor.Col++
 }
 
+func breakLine() {
+	newCurrentLine := make([]rune, cursor.Col)
+	copy(newCurrentLine, textBuffer[cursor.Row][:cursor.Col])
+
+	newLineLen := len(textBuffer[cursor.Row]) - cursor.Col
+	newLine := make([]rune, newLineLen)
+	copy(newLine, textBuffer[cursor.Row][cursor.Col:])
+
+	newTextBuffer := make([][]rune, len(textBuffer)+1)
+	copy(newTextBuffer[:cursor.Row], textBuffer[:cursor.Row])
+	copy(newTextBuffer[cursor.Row+1:], textBuffer[cursor.Row:])
+
+	newTextBuffer[cursor.Row] = newCurrentLine
+	newTextBuffer[cursor.Row+1] = newLine
+
+	textBuffer = newTextBuffer
+
+	cursor.Row++
+	cursor.Col = 0
+}
+
 func removeLineBreak() {
 	if cursor.Row == 0 { return }
 
@@ -266,7 +287,7 @@ func removeLineBreak() {
 	cursor.Col = aboveRowLen
 }
 
-func removeRune() {
+func removeRuneLeft() {
 	rowLen := len(textBuffer[cursor.Row])
 	if cursor.Col == 0 {
 		removeLineBreak()
@@ -318,7 +339,8 @@ func handleEvent(s tcell.Screen, ev *tcell.EventKey) bool {
 		}
 	} else if mode == insertMode {
 		if ev.Key() == tcell.KeyEsc { changeMode("normal")
-		} else if ev.Key() == tcell.KeyBackspace || ev.Key() == tcell.KeyBackspace2 { removeRune()
+		} else if ev.Key() == tcell.KeyBackspace || ev.Key() == tcell.KeyBackspace2 { removeRuneLeft()
+		} else if ev.Key() == tcell.KeyEnter { breakLine()
 		} else { insertRune(ev.Rune())
 		}
 	}
