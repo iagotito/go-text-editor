@@ -15,8 +15,11 @@ var logger *log.Logger
 var ROWS, COLS int
 var offsetRow, offsetCol int
 
-var source_file string
+var sourceFile string
 var textBuffer = [][]rune{}
+
+var modified bool
+var saved bool
 
 const (
 	normalMode = iota
@@ -51,9 +54,9 @@ func main() {
 		fmt.Println("No source file provided.")
 		return
 	}
-	source_file = os.Args[1]
+	sourceFile = os.Args[1]
 
-	readFile(source_file)
+	readFile(sourceFile)
 	runEditor()
 }
 
@@ -72,7 +75,7 @@ func drawText(s tcell.Screen, x, y int, style tcell.Style, text string) {
 }
 
 func readFile(filename string) {
-	source_file = filename
+	sourceFile = filename
 
 	file, err := os.Open(filename)
 	if err != nil {
@@ -98,6 +101,22 @@ func readFile(filename string) {
 	if len(textBuffer) == 0 {
 		textBuffer = append(textBuffer, []rune{})
 	}
+}
+
+func writeFile(filename string) {
+  file, err := os.Create(filename)
+  if err != nil { log.Printf("%v", err) }
+  defer file.Close()
+
+  writer := bufio.NewWriter(file)
+  for row, line := range textBuffer {
+      new_line := "\n"
+      if row == len(textBuffer) { new_line = "" }
+      write_line := string(line) + new_line
+      _, err = writer.WriteString(write_line)
+      if err != nil { fmt.Println("Error:", err) }
+  }
+	writer.Flush();
 }
 
 func scrollTextBuffer() {
@@ -134,7 +153,7 @@ func displayTextBuffer(s tcell.Screen) {
 func displayStatusBar(s tcell.Screen) {
 	var modeStatus string
 	var displayFilename string
-	//var fileStatus string
+	var fileStatus string
 	var cursorStatus string
 	var statusBarColor tcell.Color
 
@@ -147,13 +166,22 @@ func displayStatusBar(s tcell.Screen) {
 		statusBarColor = tcell.ColorOrange
 	}
 
-	displayFilename = source_file[:8]
+	if saved {
+		fileStatus = " (saved)"
+		if mode != insertMode {
+			statusBarColor = tcell.ColorLightGreen
+		}
+	} else if modified {
+		fileStatus = " (modified)"
+	}
+
+	displayFilename = sourceFile
 	cursorStatus = fmt.Sprintf("%d:%d", cursor.Row+1, cursor.Col+1)
-	statusInfoLen := len(modeStatus + displayFilename + cursorStatus)
+	statusInfoLen := len(modeStatus + displayFilename + fileStatus + cursorStatus)
 	spacesLen := COLS - statusInfoLen
 	spaces := strings.Repeat(" ", spacesLen)
 
-	statusBarText := modeStatus + displayFilename + spaces + cursorStatus
+	statusBarText := modeStatus + displayFilename + fileStatus + spaces + cursorStatus
 	statusBarStyle := tcell.StyleDefault.Background(statusBarColor).Foreground(tcell.ColorBlack)
 
 	drawText(s, ROWS, 0, statusBarStyle, statusBarText)
@@ -330,6 +358,7 @@ func handleEvent(s tcell.Screen, ev *tcell.EventKey) bool {
 	} else if mode == normalMode {
 		if ev.Rune() == 'q' || ev.Rune() == 'Q' || ev.Key() == tcell.KeyEscape {
 			return true
+		} else if ev.Rune() == 'w' { writeFile(sourceFile); modified = false; saved = true
 		} else if ev.Rune() == 'h' { moveCursor("left")
 		} else if ev.Rune() == 'j' { moveCursor("down")
 		} else if ev.Rune() == 'k' { moveCursor("up")
@@ -339,9 +368,12 @@ func handleEvent(s tcell.Screen, ev *tcell.EventKey) bool {
 		}
 	} else if mode == insertMode {
 		if ev.Key() == tcell.KeyEsc { changeMode("normal")
-		} else if ev.Key() == tcell.KeyBackspace || ev.Key() == tcell.KeyBackspace2 { removeRuneLeft()
-		} else if ev.Key() == tcell.KeyEnter { breakLine()
-		} else { insertRune(ev.Rune())
+		} else {
+			if ev.Key() == tcell.KeyBackspace || ev.Key() == tcell.KeyBackspace2 { removeRuneLeft()
+			} else if ev.Key() == tcell.KeyEnter { breakLine()
+			} else { insertRune(ev.Rune()) }
+			modified = true
+			saved = false
 		}
 	}
 
